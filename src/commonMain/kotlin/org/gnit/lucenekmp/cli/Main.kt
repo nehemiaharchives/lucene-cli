@@ -20,8 +20,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 import okio.Path.Companion.toPath
-import okio.SYSTEM
 import org.gnit.lucenekmp.store.FSDirectory
+import kotlin.time.TimeSource
 
 data class LcConfig(
     val indexPath: String,
@@ -74,32 +74,56 @@ class Lc(
 
     init {
         val config = { readConfig(fileSystem, configPath) }
-        subcommands(Index(config), Search(config))
+        subcommands(Index(config, fileSystem), Search(config))
     }
 
     override fun run() = Unit
 }
 
-class Index(private val config: () -> LcConfig) : CoreCliktCommand() {
+class Index(
+    private val config: () -> LcConfig,
+    private val fileSystem: FileSystem,
+) : CoreCliktCommand() {
     init {
-        subcommands(IndexCreate(config), IndexAdd(config), IndexUpdate(), IndexDelete())
+        subcommands(IndexCreate(config, fileSystem), IndexAdd(config), IndexUpdate(), IndexDelete())
     }
 
     override fun run() = Unit
 }
 
-class IndexCreate(private val config: () -> LcConfig) : CoreCliktCommand(name = "create") {
+class IndexCreate(
+    private val config: () -> LcConfig,
+    private val fileSystem: FileSystem = FileSystem.SYSTEM,
+) : CoreCliktCommand(name = "create") {
     private val source by argument(help = "Directory of documents to index").optional()
+    private val workers by option(
+        "--workers",
+        help = "Concurrent extraction/indexing workers (default: available processors, capped at $MAX_DEFAULT_WORKERS)",
+    ).int().default(defaultWorkerCount())
 
     override fun run() {
+        if (workers <= 0) throw CliktError("--workers must be positive")
+
         val current = config()
         val sourcePath = source?.toPath()
         FSDirectory.open(current.indexPath.toPath()).use { directory ->
             val engine = LuceneCliEngine(directory, current.fields, current.analyzer.toAnalyzer())
             engine.create()
             if (sourcePath != null) {
-                val count = engine.addAll(readResourceDocuments(FileSystem.SYSTEM, sourcePath, current))
-                echo("Indexed $count files from $sourcePath")
+                val started = TimeSource.Monotonic.markNow()
+                val report = indexResourcesConcurrently(fileSystem, sourcePath, current, engine, workers)
+                val elapsedMs = started.elapsedNow().inWholeMilliseconds
+                echo(
+                    "Indexed ${report.indexed} files from $sourcePath " +
+                        "with $workers workers in ${elapsedMs}ms " +
+                        "(skipped=${report.skipped}, errors=${report.errors})"
+                )
+                report.failures.forEach { failure ->
+                    echo("ERROR ${failure.id}: ${failure.message}", err = true)
+                }
+                if (report.errors > 0) {
+                    throw CliktError("Indexing completed with ${report.errors} errors")
+                }
             }
         }
         echo("Created index at ${current.indexPath}")

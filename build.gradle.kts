@@ -42,6 +42,7 @@ kotlin {
         implementation(libs.clikt)
         implementation(libs.okio)
         implementation(libs.kotlinx.serialization.json)
+        implementation(libs.kotlinx.coroutines.core)
         implementation(libs.kotlin.logging)
 
         testImplementation(libs.kotlin.test)
