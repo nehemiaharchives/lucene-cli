@@ -1,3 +1,7 @@
+@file:OptIn(kotlin.experimental.ExperimentalNativeApi::class)
+
 package org.gnit.lucenekmp.cli
 
-internal actual fun availableProcessorCount(): Int = Runtime.getRuntime().availableProcessors()
+import kotlin.native.Platform
+
+internal actual fun availableProcessorCount(): Int = Platform.getAvailableProcessors()
