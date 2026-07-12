@@ -15,11 +15,19 @@ repositories {
 
 kotlin {
     @Suppress("DEPRECATION")
-    macosX64()
-    macosArm64()
-    linuxX64()
-    linuxArm64()
-    mingwX64()
+    val nativeTargets = listOf(
+        macosX64(),
+        macosArm64(),
+        linuxX64(),
+        linuxArm64(),
+        mingwX64(),
+    )
+    nativeTargets.forEach { target ->
+        target.binaries.executable {
+            baseName = "lc"
+            entryPoint = "org.gnit.lucenekmp.cli.main"
+        }
+    }
     jvm()
 
     dependencies {

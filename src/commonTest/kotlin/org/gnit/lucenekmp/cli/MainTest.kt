@@ -5,6 +5,7 @@ import okio.fakefilesystem.FakeFileSystem
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 
 class MainTest {
 
@@ -19,5 +20,15 @@ class MainTest {
     fun lcWithNoArgument(){
         val result = Lc(fileSystem = fakeFs).test(emptyList())
         assertContains(result.stdout, "Usage: lc")
+    }
+
+    @Test
+    fun unsupportedAnalyzerIsRejected() {
+        val error = kotlin.runCatching { "StandardAnalyzer".toAnalyzer() }.exceptionOrNull()
+
+        assertEquals(
+            "StandardAnalyzer is not supported; use EnglishAnalyzer",
+            error?.message,
+        )
     }
 }
