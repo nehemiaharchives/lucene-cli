@@ -1,6 +1,10 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package org.gnit.lucenekmp.cli
 
-import kotlinx.atomicfu.atomic
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.fetchAndIncrement
+import kotlin.concurrent.atomics.incrementAndFetch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -72,10 +76,10 @@ class LuceneCliEngine(
     fun addAllConcurrent(sources: List<DocumentSource>, workers: Int): IndexingReport {
         require(workers > 0) { "workers must be positive" }
 
-        val nextSource = atomic(0)
-        val indexed = atomic(0)
-        val skipped = atomic(0)
-        val errors = atomic(0)
+        val nextSource = AtomicInt(0)
+        val indexed = AtomicInt(0)
+        val skipped = AtomicInt(0)
+        val errors = AtomicInt(0)
         val failures = mutableListOf<IndexingFailure>()
         val failuresMutex = Mutex()
         val workerCount = workers.coerceAtMost(sources.size.coerceAtLeast(1))
@@ -86,19 +90,19 @@ class LuceneCliEngine(
                 List(workerCount) {
                     async(dispatcher) {
                         while (true) {
-                            val sourceIndex = nextSource.getAndIncrement()
+                            val sourceIndex = nextSource.fetchAndIncrement()
                             if (sourceIndex >= sources.size) break
                             val source = sources[sourceIndex]
                             try {
                                 val document = source.load()
                                 if (document == null) {
-                                    skipped.incrementAndGet()
+                                    skipped.incrementAndFetch()
                                 } else {
                                     writer.addDocument(document.toLuceneDocument())
-                                    indexed.incrementAndGet()
+                                    indexed.incrementAndFetch()
                                 }
                             } catch (failure: Throwable) {
-                                errors.incrementAndGet()
+                                errors.incrementAndFetch()
                                 failuresMutex.withLock {
                                     failures += IndexingFailure(
                                         id = source.id,
@@ -114,9 +118,9 @@ class LuceneCliEngine(
 
         val deterministicFailures = failures.sortedWith(compareBy(IndexingFailure::id, IndexingFailure::message))
         return IndexingReport(
-            indexed = indexed.value,
-            skipped = skipped.value,
-            errors = errors.value,
+            indexed = indexed.load(),
+            skipped = skipped.load(),
+            errors = errors.load(),
             failures = deterministicFailures,
         )
     }
