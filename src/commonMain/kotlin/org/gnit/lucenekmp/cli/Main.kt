@@ -4,10 +4,18 @@ import com.github.ajalt.clikt.core.CliktError
 import com.github.ajalt.clikt.core.CoreCliktCommand
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
+import com.github.ajalt.clikt.parameters.types.int
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
@@ -18,16 +26,45 @@ import org.gnit.lucenekmp.store.FSDirectory
 data class LcConfig(
     val indexPath: String,
     val analyzer: String = "EnglishAnalyzer",
+    val extensions: Set<String> = setOf("txt", "md", "html", "htm", "json", "jsonl", "csv"),
+    val fields: List<FieldConfig> = listOf(FieldConfig("body")),
+)
+
+data class FieldConfig(
+    val name: String,
+    val source: String = "content",
+    val pattern: String? = null,
+    val group: Int = 1,
+    val matchAll: Boolean = false,
+    val maxMatches: Int = 100,
+    val boost: Float = 1f,
+    val store: Boolean = true,
 )
 
 fun readConfig(fileSystem: FileSystem, configPath: String): LcConfig {
     val root = Json.parseToJsonElement(fileSystem.read(configPath.toPath()) { readUtf8() }).jsonObject
+    val fields = root["fields"]?.jsonArray?.map { parseFieldConfig(it.jsonObject) }
+        ?: listOf(FieldConfig("body"))
     return LcConfig(
         indexPath = root["indexPath"]?.jsonPrimitive?.content
             ?: throw CliktError("config must contain indexPath"),
         analyzer = root["analyzer"]?.jsonPrimitive?.content ?: "EnglishAnalyzer",
+        extensions = root["extensions"]?.jsonArray?.map { it.jsonPrimitive.content.lowercase() }?.toSet()
+            ?: LcConfig("").extensions,
+        fields = fields,
     )
 }
+
+private fun parseFieldConfig(value: JsonObject): FieldConfig = FieldConfig(
+    name = value.getValue("name").jsonPrimitive.content,
+    source = value["source"]?.jsonPrimitive?.content ?: "content",
+    pattern = value["pattern"]?.jsonPrimitive?.content,
+    group = value["group"]?.jsonPrimitive?.intOrNull ?: 1,
+    matchAll = value["matchAll"]?.jsonPrimitive?.booleanOrNull ?: false,
+    maxMatches = value["maxMatches"]?.jsonPrimitive?.intOrNull ?: 100,
+    boost = value["boost"]?.jsonPrimitive?.floatOrNull ?: 1f,
+    store = value["store"]?.jsonPrimitive?.booleanOrNull ?: true,
+)
 
 class Lc(
     private val fileSystem: FileSystem = FileSystem.SYSTEM,
@@ -52,10 +89,18 @@ class Index(private val config: () -> LcConfig) : CoreCliktCommand() {
 }
 
 class IndexCreate(private val config: () -> LcConfig) : CoreCliktCommand(name = "create") {
+    private val source by argument(help = "Directory of documents to index").optional()
+
     override fun run() {
         val current = config()
+        val sourcePath = source?.toPath()
         FSDirectory.open(current.indexPath.toPath()).use { directory ->
-            LuceneCliEngine(directory, current.analyzer.toAnalyzer()).create()
+            val engine = LuceneCliEngine(directory, current.fields, current.analyzer.toAnalyzer())
+            engine.create()
+            if (sourcePath != null) {
+                val count = engine.addAll(readResourceDocuments(FileSystem.SYSTEM, sourcePath, current))
+                echo("Indexed $count files from $sourcePath")
+            }
         }
         echo("Created index at ${current.indexPath}")
     }
@@ -68,7 +113,8 @@ class IndexAdd(private val config: () -> LcConfig) : CoreCliktCommand(name = "ad
     override fun run() {
         val current = config()
         FSDirectory.open(current.indexPath.toPath()).use { directory ->
-            LuceneCliEngine(directory, current.analyzer.toAnalyzer()).add(EnglishDocument(id, body))
+            val fields = current.fields.associate { it.name to body }
+            LuceneCliEngine(directory, current.fields, current.analyzer.toAnalyzer()).add(SearchDocument(id, fields))
         }
         echo("Added document $id")
     }
@@ -84,14 +130,16 @@ class IndexDelete : CoreCliktCommand(name = "delete") {
 
 class Search(private val config: () -> LcConfig) : CoreCliktCommand() {
     private val query by option("-q", "--query", help = "English query text").required()
+    private val limit by option("-n", "--limit", help = "Maximum results").int().default(10)
 
     override fun run() {
         val current = config()
         val results = FSDirectory.open(current.indexPath.toPath()).use { directory ->
-            LuceneCliEngine(directory, current.analyzer.toAnalyzer()).search(query)
+            LuceneCliEngine(directory, current.fields, current.analyzer.toAnalyzer()).search(query, limit)
         }
         results.forEach { result ->
-            echo("id=${result.id}\tscore=${result.score}\tbody=${result.body}")
+            val fields = result.fields.entries.joinToString("\t") { (name, value) -> "$name=$value" }
+            echo("id=${result.id}\tscore=${result.score}\t$fields")
         }
     }
 }

@@ -24,11 +24,16 @@ class MainTest {
 
     @Test
     fun unsupportedAnalyzerIsRejected() {
-        val error = kotlin.runCatching { "StandardAnalyzer".toAnalyzer() }.exceptionOrNull()
+        val error = kotlin.runCatching { "MissingAnalyzer".toAnalyzer() }.exceptionOrNull()
 
-        assertEquals(
-            "StandardAnalyzer is not supported; use EnglishAnalyzer",
-            error?.message,
-        )
+        assertContains(error?.message.orEmpty(), "Available analyzers:")
+        assertContains(error?.message.orEmpty(), "StandardAnalyzer")
+    }
+
+    @Test
+    fun everyRegisteredAnalyzerCanBeCreated() {
+        supportedAnalyzerNames.forEach { name ->
+            name.toAnalyzer().close()
+        }
     }
 }
