@@ -9,18 +9,54 @@ fun readResourceDocuments(
     config: LcConfig,
 ): Sequence<SearchDocument> {
     val extractors = config.fields.map { FieldExtractor(it) }
-    return fileSystem.listRecursively(root)
+    return eligibleResourcePaths(fileSystem, root, config)
+        .asSequence()
+        .mapNotNull { path ->
+            val content = runCatching { fileSystem.read(path) { readUtf8() } }.getOrNull()
+                ?: return@mapNotNull null
+            extractDocument(root, path, content, extractors)
+        }
+}
+
+fun indexResourcesConcurrently(
+    fileSystem: FileSystem,
+    root: Path,
+    config: LcConfig,
+    engine: LuceneCliEngine,
+    workers: Int,
+): IndexingReport {
+    val extractors = config.fields.map { FieldExtractor(it) }
+    val sources = eligibleResourcePaths(fileSystem, root, config).map { path ->
+        val id = path.relativeTo(root).toString()
+        DocumentSource(id) {
+            val content = fileSystem.read(path) { readUtf8() }
+            extractDocument(root, path, content, extractors)
+        }
+    }
+    return engine.addAllConcurrent(sources, workers)
+}
+
+private fun eligibleResourcePaths(
+    fileSystem: FileSystem,
+    root: Path,
+    config: LcConfig,
+): List<Path> = fileSystem.listRecursively(root)
     .filter { fileSystem.metadata(it).isRegularFile }
     .filter { it.name.substringAfterLast('.', "").lowercase() in config.extensions }
-    .mapNotNull { path ->
-        val content = runCatching { fileSystem.read(path) { readUtf8() } }.getOrNull()
-            ?: return@mapNotNull null
-        val id = path.relativeTo(root).toString()
-        val fields = extractors.associate { extractor ->
-            extractor.field.name to extractor.extract(id, content)
-        }
-        SearchDocument(id, fields).takeIf { fields.values.any(String::isNotBlank) }
+    .toList()
+    .sortedBy(Path::toString)
+
+private fun extractDocument(
+    root: Path,
+    path: Path,
+    content: String,
+    extractors: List<FieldExtractor>,
+): SearchDocument? {
+    val id = path.relativeTo(root).toString()
+    val fields = extractors.associate { extractor ->
+        extractor.field.name to extractor.extract(id, content)
     }
+    return SearchDocument(id, fields).takeIf { fields.values.any(String::isNotBlank) }
 }
 
 internal fun extractField(field: FieldConfig, path: String, content: String): String {
