@@ -1,0 +1,36 @@
+[versions]
+kotlin = "2.4.0"
+lucene-kmp = "10.2.0-alpha14"
+clikt = "5.1.0"
+okio = "3.17.0"
+kotlinx-serialization = "1.11.0"
+kotlin-logging = "8.0.4"
+logback = "1.5.34"
+slf4j = "2.0.18"
+vanniktech-maven-publish = "0.37.0"
+kover = "0.9.8"
+dokka = "2.2.0"
+
+[libraries]
+lucene-kmp-core = { module = "org.gnit.lucene-kmp:lucene-kmp-core", version.ref = "lucene-kmp" }
+lucene-kmp-queryparser = { module = "org.gnit.lucene-kmp:lucene-kmp-queryparser", version.ref = "lucene-kmp" }
+lucene-kmp-analysis-common = { module = "org.gnit.lucene-kmp:lucene-kmp-analysis-common", version.ref = "lucene-kmp" }
+lucene-kmp-analysis-morfologik = { module = "org.gnit.lucene-kmp:lucene-kmp-analysis-morfologik", version.ref = "lucene-kmp" }
+lucene-kmp-analysis-smartcn = { module = "org.gnit.lucene-kmp:lucene-kmp-analysis-smartcn", version.ref = "lucene-kmp" }
+lucene-kmp-analysis-nori = { module = "org.gnit.lucene-kmp:lucene-kmp-analysis-nori", version.ref = "lucene-kmp" }
+lucene-kmp-analysis-kuromoji = { module = "org.gnit.lucene-kmp:lucene-kmp-analysis-kuromoji", version.ref = "lucene-kmp" }
+lucene-kmp-analysis-extra = { module = "org.gnit.lucene-kmp:lucene-kmp-analysis-extra", version.ref = "lucene-kmp" }
+clikt = { module = "com.github.ajalt.clikt:clikt-core", version.ref = "clikt" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+okio-fakefs = { module = "com.squareup.okio:okio-fakefilesystem", version.ref = "okio" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kotlin-logging" }
+logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
+[plugins]
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version.ref = "vanniktech-maven-publish" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
+dokka-plugin = { id = "org.jetbrains.dokka", version.ref = "dokka" }
